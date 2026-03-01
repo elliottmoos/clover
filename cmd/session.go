@@ -22,6 +22,7 @@ var sessionCmd = &cobra.Command{
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
 		layout, _ := cmd.Flags().GetString("layout")
 		sessionName, _ := cmd.Flags().GetString("name")
+		instancesFlag, _ := cmd.Flags().GetInt("instances")
 
 		reg, err := registry.Load()
 		if err != nil {
@@ -70,6 +71,11 @@ var sessionCmd = &cobra.Command{
 			sessionName = globalCfg.Session.SessionName
 		}
 
+		// Validate CLI --instances flag against global max
+		if instancesFlag > 0 && instancesFlag > globalCfg.Session.MaxInstances {
+			return fmt.Errorf("--instances %d exceeds max_instances (%d)", instancesFlag, globalCfg.Session.MaxInstances)
+		}
+
 		// Check for existing session
 		if !dryRun && tmux.SessionExists(sessionName) {
 			return fmt.Errorf("tmux session %q already exists", sessionName)
@@ -82,11 +88,21 @@ var sessionCmd = &cobra.Command{
 			if err != nil {
 				return fmt.Errorf("loading config for %q: %w", repo.Name, err)
 			}
+
+			// Determine instances: CLI flag > per-repo config
+			instances := repoCfg.Session.Instances
+			if instancesFlag > 0 {
+				instances = instancesFlag
+			} else if instances > repoCfg.Session.MaxInstances {
+				return fmt.Errorf("repo %q: instances (%d) exceeds max_instances (%d)", repo.Name, instances, repoCfg.Session.MaxInstances)
+			}
+
 			cmdArgs := launcher.BuildCommand(repoCfg)
 			entries = append(entries, tmux.Entry{
-				Name:    repo.Name,
-				WorkDir: repo.Path,
-				Command: cmdArgs,
+				Name:      repo.Name,
+				WorkDir:   repo.Path,
+				Command:   cmdArgs,
+				Instances: instances,
 			})
 		}
 
@@ -122,5 +138,6 @@ func init() {
 	sessionCmd.Flags().Bool("dry-run", false, "Print tmux commands without executing")
 	sessionCmd.Flags().String("layout", "", "Layout: windows or panes (defaults to config)")
 	sessionCmd.Flags().String("name", "", "Tmux session name (defaults to config)")
+	sessionCmd.Flags().Int("instances", 0, "Number of claude panes per window (0 = use config)")
 	rootCmd.AddCommand(sessionCmd)
 }

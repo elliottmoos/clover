@@ -8,9 +8,19 @@ import (
 
 // Entry represents a repo to be launched in a tmux window or pane.
 type Entry struct {
-	Name    string   // window/pane name (repo name)
-	WorkDir string   // working directory
-	Command []string // command to send (e.g. ["claude", "--model", "opus"])
+	Name      string   // window/pane name (repo name)
+	WorkDir   string   // working directory
+	Command   []string // command to send (e.g. ["claude", "--model", "opus"])
+	Instances int      // number of claude panes to create in this window (windows layout only)
+}
+
+// effectiveInstances returns the number of panes to create for an entry.
+// Values less than 1 are treated as 1.
+func effectiveInstances(n int) int {
+	if n < 1 {
+		return 1
+	}
+	return n
 }
 
 // Session represents a tmux session to be created.
@@ -64,8 +74,10 @@ func buildWindowsLayout(s *Session) [][]string {
 		"-n", first.Name,
 		"-c", first.WorkDir,
 	})
-	// Send command to first window
+	// Send command to first pane of first window
 	cmds = append(cmds, sendKeysCmd(s.Name, first.Name, first.Command))
+	// Add extra panes for additional instances
+	cmds = append(cmds, splitPaneCmds(s.Name, first)...)
 
 	// Create additional windows
 	for _, e := range s.Entries[1:] {
@@ -76,11 +88,32 @@ func buildWindowsLayout(s *Session) [][]string {
 			"-c", e.WorkDir,
 		})
 		cmds = append(cmds, sendKeysCmd(s.Name, e.Name, e.Command))
+		cmds = append(cmds, splitPaneCmds(s.Name, e)...)
 	}
 
 	// Select first window
 	cmds = append(cmds, []string{"tmux", "select-window", "-t", s.Name + ":0"})
 
+	return cmds
+}
+
+// splitPaneCmds generates split-window + send-keys commands for extra instances beyond the first.
+func splitPaneCmds(sessionName string, e Entry) [][]string {
+	n := effectiveInstances(e.Instances)
+	if n <= 1 {
+		return nil
+	}
+	var cmds [][]string
+	target := sessionName + ":" + e.Name
+	for i := 1; i < n; i++ {
+		cmds = append(cmds, []string{
+			"tmux", "split-window",
+			"-t", target,
+			"-c", e.WorkDir,
+		})
+		cmds = append(cmds, sendKeysCmd(sessionName, e.Name, e.Command))
+	}
+	cmds = append(cmds, []string{"tmux", "select-layout", "-t", target, "tiled"})
 	return cmds
 }
 

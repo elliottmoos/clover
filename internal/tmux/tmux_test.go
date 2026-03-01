@@ -102,3 +102,85 @@ func TestShellJoin(t *testing.T) {
 func TestAttachCmd(t *testing.T) {
 	assert.Equal(t, []string{"tmux", "attach-session", "-t", "my-session"}, AttachCmd("my-session"))
 }
+
+func TestBuildCommandsWindowsMultiInstance(t *testing.T) {
+	s := &Session{
+		Name:   "clover",
+		Layout: "windows",
+		Entries: []Entry{
+			{Name: "repo-a", WorkDir: "/code/a", Command: []string{"claude"}, Instances: 3},
+		},
+	}
+
+	cmds := BuildCommands(s)
+	require.NotEmpty(t, cmds)
+
+	// Count command types
+	var splitWindows, sendKeys int
+	var hasLayout bool
+	for _, c := range cmds {
+		switch c[1] {
+		case "split-window":
+			splitWindows++
+		case "send-keys":
+			sendKeys++
+		case "select-layout":
+			if len(c) >= 5 && c[4] == "tiled" {
+				hasLayout = true
+			}
+		}
+	}
+
+	assert.Equal(t, 2, splitWindows, "expect 2 split-windows for 3 instances")
+	assert.Equal(t, 3, sendKeys, "expect 3 send-keys for 3 instances")
+	assert.True(t, hasLayout, "expect tiled layout when instances > 1")
+}
+
+func TestBuildCommandsWindowsMultiInstanceMultiRepo(t *testing.T) {
+	s := &Session{
+		Name:   "clover",
+		Layout: "windows",
+		Entries: []Entry{
+			{Name: "repo-a", WorkDir: "/code/a", Command: []string{"claude"}, Instances: 2},
+			{Name: "repo-b", WorkDir: "/code/b", Command: []string{"claude"}, Instances: 3},
+		},
+	}
+
+	cmds := BuildCommands(s)
+	require.NotEmpty(t, cmds)
+
+	var splitWindows, sendKeys int
+	for _, c := range cmds {
+		switch c[1] {
+		case "split-window":
+			splitWindows++
+		case "send-keys":
+			sendKeys++
+		}
+	}
+
+	// repo-a: 1 split; repo-b: 2 splits
+	assert.Equal(t, 3, splitWindows)
+	// repo-a: 2 send-keys; repo-b: 3 send-keys
+	assert.Equal(t, 5, sendKeys)
+}
+
+func TestBuildCommandsWindowsDefaultInstances(t *testing.T) {
+	s := &Session{
+		Name:   "clover",
+		Layout: "windows",
+		Entries: []Entry{
+			{Name: "repo-a", WorkDir: "/code/a", Command: []string{"claude"}}, // Instances zero-value
+		},
+	}
+
+	cmds := BuildCommands(s)
+	require.NotEmpty(t, cmds)
+
+	for _, c := range cmds {
+		assert.NotEqual(t, "split-window", c[1], "zero Instances should produce no splits")
+		if c[1] == "select-layout" {
+			assert.NotEqual(t, "tiled", c[len(c)-1], "no tiled layout when single instance")
+		}
+	}
+}
