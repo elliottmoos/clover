@@ -76,11 +76,6 @@ var sessionCmd = &cobra.Command{
 			return fmt.Errorf("--instances %d exceeds max_instances (%d)", instancesFlag, globalCfg.Session.MaxInstances)
 		}
 
-		// Check for existing session
-		if !dryRun && tmux.SessionExists(sessionName) {
-			return fmt.Errorf("tmux session %q already exists", sessionName)
-		}
-
 		// Build entries
 		var entries []tmux.Entry
 		for _, repo := range repos {
@@ -112,7 +107,20 @@ var sessionCmd = &cobra.Command{
 			Entries: entries,
 		}
 
-		cmds := tmux.BuildCommands(session)
+		// Build tmux commands: reconcile if session exists (windows layout only),
+		// otherwise create from scratch. For panes layout with an existing session
+		// we skip modification and just attach.
+		var cmds [][]string
+		sessionExists := !dryRun && tmux.SessionExists(sessionName)
+		if sessionExists && layout == "windows" {
+			existing, err := tmux.ListWindows(sessionName)
+			if err != nil {
+				return err
+			}
+			cmds = tmux.BuildReconcileCommands(session, existing)
+		} else if !sessionExists {
+			cmds = tmux.BuildCommands(session)
+		}
 
 		if dryRun {
 			for _, c := range cmds {

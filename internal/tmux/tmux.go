@@ -3,6 +3,7 @@ package tmux
 import (
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -43,6 +44,70 @@ func FindTmux() (string, error) {
 func SessionExists(name string) bool {
 	cmd := exec.Command("tmux", "has-session", "-t", name)
 	return cmd.Run() == nil
+}
+
+// ListWindows returns a map of window name → pane count for an existing session.
+func ListWindows(session string) (map[string]int, error) {
+	out, err := exec.Command("tmux", "list-windows", "-t", session, "-F", "#{window_name} #{window_panes}").Output()
+	if err != nil {
+		return nil, fmt.Errorf("listing windows for session %q: %w", session, err)
+	}
+	windows := make(map[string]int)
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, " ", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		panes, err := strconv.Atoi(parts[1])
+		if err != nil {
+			continue
+		}
+		windows[parts[0]] = panes
+	}
+	return windows, nil
+}
+
+// BuildReconcileCommands generates commands to bring an existing session in sync with the
+// desired state. For each entry: if the window is missing it is created; if it exists but
+// has fewer panes than desired the missing panes are added. Windows with enough panes are
+// left untouched.
+func BuildReconcileCommands(s *Session, existing map[string]int) [][]string {
+	var cmds [][]string
+
+	for _, e := range s.Entries {
+		desired := effectiveInstances(e.Instances)
+		currentPanes, windowExists := existing[e.Name]
+
+		if !windowExists {
+			cmds = append(cmds, []string{
+				"tmux", "new-window",
+				"-t", s.Name,
+				"-n", e.Name,
+				"-c", e.WorkDir,
+			})
+			cmds = append(cmds, sendKeysCmd(s.Name, e.Name, e.Command))
+			cmds = append(cmds, splitPaneCmds(s.Name, e)...)
+			continue
+		}
+
+		if currentPanes < desired {
+			target := s.Name + ":" + e.Name
+			for i := currentPanes; i < desired; i++ {
+				cmds = append(cmds, []string{
+					"tmux", "split-window",
+					"-t", target,
+					"-c", e.WorkDir,
+				})
+				cmds = append(cmds, sendKeysCmd(s.Name, e.Name, e.Command))
+			}
+			cmds = append(cmds, []string{"tmux", "select-layout", "-t", target, "tiled"})
+		}
+	}
+
+	return cmds
 }
 
 // BuildCommands generates the tmux commands needed to create a session.

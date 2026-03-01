@@ -103,6 +103,104 @@ func TestAttachCmd(t *testing.T) {
 	assert.Equal(t, []string{"tmux", "attach-session", "-t", "my-session"}, AttachCmd("my-session"))
 }
 
+func TestBuildReconcileCommandsNewWindow(t *testing.T) {
+	s := &Session{
+		Name:   "clover",
+		Layout: "windows",
+		Entries: []Entry{
+			{Name: "repo-a", WorkDir: "/code/a", Command: []string{"claude"}, Instances: 1},
+		},
+	}
+	existing := map[string]int{} // session exists but window is absent
+
+	cmds := BuildReconcileCommands(s, existing)
+	require.NotEmpty(t, cmds)
+
+	assert.Equal(t, "new-window", cmds[0][1])
+	assert.Contains(t, cmds[0], "repo-a")
+	assert.Equal(t, "send-keys", cmds[1][1])
+}
+
+func TestBuildReconcileCommandsMissingPanes(t *testing.T) {
+	s := &Session{
+		Name:   "clover",
+		Layout: "windows",
+		Entries: []Entry{
+			{Name: "repo-a", WorkDir: "/code/a", Command: []string{"claude"}, Instances: 3},
+		},
+	}
+	existing := map[string]int{"repo-a": 1} // window exists with 1 pane, want 3
+
+	cmds := BuildReconcileCommands(s, existing)
+	require.NotEmpty(t, cmds)
+
+	var splits, sends int
+	var hasTiled bool
+	for _, c := range cmds {
+		switch c[1] {
+		case "split-window":
+			splits++
+		case "send-keys":
+			sends++
+		case "select-layout":
+			if c[len(c)-1] == "tiled" {
+				hasTiled = true
+			}
+		}
+	}
+	assert.Equal(t, 2, splits, "2 splits to go from 1 to 3 panes")
+	assert.Equal(t, 2, sends, "1 send-keys per new pane")
+	assert.True(t, hasTiled)
+}
+
+func TestBuildReconcileCommandsNoop(t *testing.T) {
+	s := &Session{
+		Name:   "clover",
+		Layout: "windows",
+		Entries: []Entry{
+			{Name: "repo-a", WorkDir: "/code/a", Command: []string{"claude"}, Instances: 2},
+		},
+	}
+	existing := map[string]int{"repo-a": 2} // already at desired count
+
+	cmds := BuildReconcileCommands(s, existing)
+	assert.Empty(t, cmds)
+}
+
+func TestBuildReconcileCommandsMixed(t *testing.T) {
+	s := &Session{
+		Name:   "clover",
+		Layout: "windows",
+		Entries: []Entry{
+			{Name: "repo-a", WorkDir: "/code/a", Command: []string{"claude"}, Instances: 2}, // missing window
+			{Name: "repo-b", WorkDir: "/code/b", Command: []string{"claude"}, Instances: 3}, // has 1, needs 3
+			{Name: "repo-c", WorkDir: "/code/c", Command: []string{"claude"}, Instances: 1}, // satisfied
+		},
+	}
+	existing := map[string]int{
+		"repo-b": 1,
+		"repo-c": 2, // more than desired — leave alone
+	}
+
+	cmds := BuildReconcileCommands(s, existing)
+	require.NotEmpty(t, cmds)
+
+	// repo-a: new-window + send-keys (instances=2 → splitPaneCmds adds 1 split + tiled)
+	// repo-b: 2 splits + 2 sends + tiled
+	// repo-c: nothing
+	var newWindows, splits int
+	for _, c := range cmds {
+		switch c[1] {
+		case "new-window":
+			newWindows++
+		case "split-window":
+			splits++
+		}
+	}
+	assert.Equal(t, 1, newWindows, "only repo-a gets a new window")
+	assert.Equal(t, 3, splits, "1 for repo-a extra pane + 2 for repo-b")
+}
+
 func TestBuildCommandsWindowsMultiInstance(t *testing.T) {
 	s := &Session{
 		Name:   "clover",
