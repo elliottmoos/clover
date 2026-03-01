@@ -1,0 +1,15 @@
+# Binaries
+clover
+/dist/
+
+# Test output
+coverage.out
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
