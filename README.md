@@ -112,7 +112,7 @@ Launch Claude Code in a registered repo. Replaces the current process with `clau
 
 ### `clover session [names...]`
 
-Create a tmux session with Claude Code running in multiple repos.
+Create or reconcile a tmux session with Claude Code running in multiple repos. If the session already exists (windows layout only), missing windows are added and any window with fewer panes than desired has the missing panes filled in — existing windows are never touched.
 
 | Flag | Description |
 |---|---|
@@ -120,6 +120,7 @@ Create a tmux session with Claude Code running in multiple repos.
 | `--all` | Include all registered repos |
 | `--layout <windows\|panes>` | Tmux layout (default: from config) |
 | `--name <name>` | Tmux session name (default: from config) |
+| `--instances <n>` | Number of Claude panes per window, overrides config (windows layout only) |
 | `--dry-run` | Print tmux commands without executing |
 
 ### `clover config init`
@@ -146,6 +147,8 @@ Set a value in the global config. Supported keys:
 | `claude.additional_flags` | Comma-separated flags |
 | `session.layout` | `windows` / `panes` |
 | `session.session_name` | Any string |
+| `session.instances` | Number of Claude panes per window (default: `1`, max: `session.max_instances`) |
+| `session.max_instances` | Upper bound for `session.instances` (default: `10`) |
 
 ### `clover config get <key>`
 
