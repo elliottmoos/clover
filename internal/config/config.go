@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/elliottmoos/clover/internal/paths"
@@ -114,6 +115,10 @@ func Get(cfg *Config, key string) (string, error) {
 		return cfg.Session.Layout, nil
 	case "session.session_name":
 		return cfg.Session.SessionName, nil
+	case "session.instances":
+		return fmt.Sprintf("%d", cfg.Session.Instances), nil
+	case "session.max_instances":
+		return fmt.Sprintf("%d", cfg.Session.MaxInstances), nil
 	default:
 		return "", fmt.Errorf("unknown config key %q", key)
 	}
@@ -141,6 +146,18 @@ func Set(cfg *Config, key, value string) error {
 		cfg.Session.Layout = value
 	case "session.session_name":
 		cfg.Session.SessionName = value
+	case "session.instances":
+		n, err := strconv.Atoi(value)
+		if err != nil || n < 1 || n > cfg.Session.MaxInstances {
+			return fmt.Errorf("session.instances must be between 1 and %d", cfg.Session.MaxInstances)
+		}
+		cfg.Session.Instances = n
+	case "session.max_instances":
+		n, err := strconv.Atoi(value)
+		if err != nil || n < 1 {
+			return fmt.Errorf("session.max_instances must be >= 1")
+		}
+		cfg.Session.MaxInstances = n
 	default:
 		return fmt.Errorf("unknown config key %q", key)
 	}
@@ -185,5 +202,11 @@ func merge(dst, src *Config) {
 	}
 	if src.Session.SessionName != "" {
 		dst.Session.SessionName = src.Session.SessionName
+	}
+	if src.Session.Instances != 0 {
+		dst.Session.Instances = src.Session.Instances
+	}
+	if src.Session.MaxInstances != 0 {
+		dst.Session.MaxInstances = src.Session.MaxInstances
 	}
 }

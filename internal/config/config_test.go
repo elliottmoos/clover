@@ -14,6 +14,8 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, "sonnet", cfg.Claude.Model)
 	assert.Equal(t, "windows", cfg.Session.Layout)
 	assert.Equal(t, "clover", cfg.Session.SessionName)
+	assert.Equal(t, 1, cfg.Session.Instances)
+	assert.Equal(t, 10, cfg.Session.MaxInstances)
 }
 
 func TestMergeScalars(t *testing.T) {
@@ -112,4 +114,49 @@ func TestSetUnknownKey(t *testing.T) {
 	cfg := DefaultConfig()
 	err := Set(&cfg, "unknown.key", "value")
 	assert.ErrorContains(t, err, "unknown config key")
+}
+
+func TestMergeInstances(t *testing.T) {
+	dst := DefaultConfig()
+	src := &Config{Session: SessionDefaults{Instances: 3}}
+	merge(&dst, src)
+	assert.Equal(t, 3, dst.Session.Instances)
+}
+
+func TestMergeInstancesZeroDoesNotOverride(t *testing.T) {
+	dst := DefaultConfig()
+	src := &Config{}
+	merge(&dst, src)
+	assert.Equal(t, 1, dst.Session.Instances)
+	assert.Equal(t, 10, dst.Session.MaxInstances)
+}
+
+func TestGetSetInstances(t *testing.T) {
+	cfg := DefaultConfig()
+	require.NoError(t, Set(&cfg, "session.instances", "4"))
+	val, err := Get(&cfg, "session.instances")
+	require.NoError(t, err)
+	assert.Equal(t, "4", val)
+}
+
+func TestSetInstancesInvalid(t *testing.T) {
+	cfg := DefaultConfig()
+	assert.Error(t, Set(&cfg, "session.instances", "0"))
+	assert.Error(t, Set(&cfg, "session.instances", "-1"))
+	assert.Error(t, Set(&cfg, "session.instances", "abc"))
+	assert.Error(t, Set(&cfg, "session.instances", "11")) // exceeds default max of 10
+}
+
+func TestGetSetMaxInstances(t *testing.T) {
+	cfg := DefaultConfig()
+	require.NoError(t, Set(&cfg, "session.max_instances", "5"))
+	val, err := Get(&cfg, "session.max_instances")
+	require.NoError(t, err)
+	assert.Equal(t, "5", val)
+}
+
+func TestSetMaxInstancesInvalid(t *testing.T) {
+	cfg := DefaultConfig()
+	assert.Error(t, Set(&cfg, "session.max_instances", "0"))
+	assert.Error(t, Set(&cfg, "session.max_instances", "-1"))
 }

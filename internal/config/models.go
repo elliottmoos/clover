@@ -10,8 +10,10 @@ type ClaudeFlags struct {
 
 // SessionDefaults holds default settings for tmux sessions.
 type SessionDefaults struct {
-	Layout      string `yaml:"layout,omitempty"`      // "windows" or "panes"
-	SessionName string `yaml:"session_name,omitempty"` // default tmux session name
+	Layout      string `yaml:"layout,omitempty"`        // "windows" or "panes"
+	SessionName string `yaml:"session_name,omitempty"`  // default tmux session name
+	Instances   int    `yaml:"instances,omitempty"`     // number of claude panes per window
+	MaxInstances int   `yaml:"max_instances,omitempty"` // upper bound for instances
 }
 
 // Config is the full configuration for clover.
@@ -27,8 +29,10 @@ func DefaultConfig() Config {
 			Model: "sonnet",
 		},
 		Session: SessionDefaults{
-			Layout:      "windows",
-			SessionName: "clover",
+			Layout:       "windows",
+			SessionName:  "clover",
+			Instances:    1,
+			MaxInstances: 10,
 		},
 	}
 }
